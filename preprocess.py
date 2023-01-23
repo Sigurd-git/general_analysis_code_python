@@ -2,6 +2,8 @@ import numpy as np
 import scipy
 import re
 from scipy.interpolate import interp1d
+from scipy import signal
+
 from einops import rearrange
 def lag(X,lag_num,format):
     '''
@@ -73,14 +75,17 @@ def align_time(array,t_origin,t_new,format):
     #find the time dimension
     time_dim = format.index('t')
 
-    #compute 
+    #compute origin frequency
     f_0 = (len(t_origin)-1)/(t_origin[-1] - t_origin[0])
 
     
-    #resample
+    #compute new frequency
     f_new = (len(t_new)-1)/(t_new[-1] - t_new[0])
 
-    array_resample,t_resample = scipy.signal.resample(array, np.int32(np.round(f_new/f_0 * len(t_origin))),t_origin,axis=time_dim)
+    # The number of samples in the resampled signal.
+    sample_num = np.int32(np.round(f_new/f_0 * len(t_origin)))
+
+    array_resample,t_resample = signal.resample(array, sample_num,t_origin,axis=time_dim)
     
 
     #pad the array_resample and t_resample to cover the whole range of t_new
@@ -118,13 +123,31 @@ def align_time(array,t_origin,t_new,format):
     return array_new
 
 
-class rearrange_to_2D:
+class rearrange_and_reverse:
     def __init__(self,X,format):
         '''
         format: name of dimensions and the reduced dimensions, like 'b c t f -> (b c f) t'
-        this class is used to rearrange the array to 2D array
+        this class is used to rearrange the array to MD array
         its workflow is like this: 'b c t f -> b c t f -> b c t*f'
+        Also, it can reverse the process.
 
+        Example1:
+        X = np.arange(24).reshape(1,2,3,4)
+        format = 'b c t f -> (b c f) t'
+        rearrane_ = rearrange_and_reverse(X,format)
+        X_MD = rearrane_._ND_to_MD(X)
+        X_new = rearrane_._MD_to_ND(X_MD)
+        print(X_MD)
+        print(X_new)
+
+        Example2:
+        X = np.arange(24).reshape(1,2,3,4)
+        format = 'b c t f -> (b c f) t'
+        rearrane_ = rearrange_and_reverse(X,format)
+        X_MD = np.mean(X_MD,axis=-1,keepdims=True)
+        X_new = rearrane_._MD_to_ND(X_MD,t=1)
+        print(X_MD)
+        print(X_new)
         '''
         #remove spaces at the beginning and end
         format = format.strip()
@@ -141,17 +164,19 @@ class rearrange_to_2D:
         # {dimnames:dimlengths}
         self.dimdict = dict(zip(dimnames,dimlengths))
 
-    def _ND_to_2D(self,X):
+    def _ND_to_MD(self,X):
+        # X: np array
+        X_MD = rearrange(X,self.format_before+'->'+self.format_after)
+        return X_MD
 
-        X_2D = rearrange(X,self.format_before+'->'+self.format_after)
-        return X_2D
-
-    def _2D_to_ND(self,X_2D):
-        X = rearrange(X_2D,self.format_after+'->'+self.format_before,self.dimdict)
+    def _MD_to_ND(self,X_MD,**kwargs):
+        # you can use this function to reverse the process of _ND_to_MD
+        # X_MD: m Dimension array
+        # kwargs: the dimension names and lengths of the reversed array, it will cover the original dimension names and lengths
+        dimdict = self.dimdict
+        dimdict.update(kwargs)
+        X = rearrange(X_MD,self.format_after+'->'+self.format_before,**dimdict)
         return X
-
-
-        
 
 
 
@@ -169,4 +194,18 @@ if __name__ == '__main__':
     t_new = np.arange(0,3.9,0.1)
     X_new = align_time(X,t_origin,t_new,'b t f')
 
+    #construct a test matrix for rearrange_to_MD
+    X = np.arange(24).reshape(1,2,3,4)
+    format = 'b c t f -> (b c f) t'
+    rearrane_ = rearrange_and_reverse(X,format)
+
+    X_MD = rearrane_._ND_to_MD(X)
+    X_new = rearrane_._MD_to_ND(X_MD)
+    print(X_MD)
+    print(X_new)
+    X_MD = np.mean(X_MD,axis=-1,keepdims=True)
+    X_new = rearrane_._MD_to_ND(X_MD,t=1)
+    print(X_MD)
+    print(X_new.shape)
     pass
+
