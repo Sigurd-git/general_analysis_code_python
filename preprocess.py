@@ -34,31 +34,175 @@ def lag(X,lag_num,format):
     feature_dim = format.index('f')
 
     X_lags = []
-    for i in range(lag_num):
-        if i==0:
-            X_lag = X
-        else:
+
+    lag_before = lag_num>=0 
+
+    
+
+    if lag_before:
+        for i in range(lag_num):
+            if i==0:
+                X_lag = X
+            else:
+                #generate pad matrix
+                pad_matrix_shape = list(X.shape)
+                pad_matrix_shape[time_dim] = i
+                pad_matrix = np.zeros(pad_matrix_shape)
+                X_lag = np.concatenate((pad_matrix,X),axis=time_dim)
+
+                #remove the last lag_num samples
+                X_lag = np.delete(X_lag, np.s_[-i:], axis=time_dim)
+
+            X_lags.append(X_lag)
+    else:
+        lag_num = -lag_num
+        for i in range(lag_num):
             #generate pad matrix
             pad_matrix_shape = list(X.shape)
             pad_matrix_shape[time_dim] = i
             pad_matrix = np.zeros(pad_matrix_shape)
-            X_lag = np.concatenate((pad_matrix,X),axis=time_dim)
+            X_lag = np.concatenate((X,pad_matrix),axis=time_dim)
 
-            #remove the last lag_num samples
-            X_lag = np.delete(X_lag, np.s_[-i:], axis=time_dim)
+            #remove the first lag_num samples
+            X_lag = np.delete(X_lag, np.s_[:i], axis=time_dim)
 
-        X_lags.append(X_lag)
+            X_lags.append(X_lag)
     X_lags = np.concatenate(X_lags,axis=feature_dim)
 
 
     return X_lags
 
-def align_time(array,t_origin,t_new,format):
+def match_lag(X,lag_seqs,format):
+    '''
+    X: np array 
+    lag_seqs: a list or vector of lag numbers
+    format: name of dimensions, like 'b c t f ' or 't f'
+    this function is used to add lags at t dimension and merge with the f dimension
+    its workflow is like this: 'b c t f -> b c t f lag -> b c t f*lag'
+
+    Example:
+    X = np.arange(24).reshape(2,3,4)
+    print(X)
+    X_lag = match_lag(X,(0,1,2,4),'b t f')
+    print(X_lag)
+    '''
+
+
+
+    #remove spaces at the beginning and end
+    format = format.strip()
+    #analyse format, splited by any number of spaces
+    format = re.split('\s+',format)
+
+    #find the time dimension
+    time_dim = format.index('t')
+
+    #find the feature dimension
+    feature_dim = format.index('f')
+
+    X_lags = []
+
+    for i in lag_seqs:
+        
+        if i==0:
+            X_lag = X
+        else:
+            lag_before = i>0 
+            if lag_before:
+                #generate pad matrix
+                pad_matrix_shape = list(X.shape)
+                pad_matrix_shape[time_dim] = i
+                pad_matrix = np.zeros(pad_matrix_shape)
+                X_lag = np.concatenate((pad_matrix,X),axis=time_dim)
+
+                #remove the last lag_num samples
+                X_lag = np.delete(X_lag, np.s_[-i:], axis=time_dim)
+            else:
+                lag_num = -lag_num
+                #generate pad matrix
+                pad_matrix_shape = list(X.shape)
+                pad_matrix_shape[time_dim] = i
+                pad_matrix = np.zeros(pad_matrix_shape)
+                X_lag = np.concatenate((X,pad_matrix),axis=time_dim)
+
+                #remove the first lag_num samples
+                X_lag = np.delete(X_lag, np.s_[:i], axis=time_dim)
+        X_lags.append(X_lag)
+
+    X_lags = np.concatenate(X_lags,axis=feature_dim)
+
+
+    return X_lags
+
+def structure_lag(X,lag_num,phoneme_df,format):
+    '''
+    X: np array 
+    lag_num: the number of lags
+    format: name of dimensions, like 'b c t f ' or 't f'
+    this function is used to add lags at t dimension and merge with the f dimension
+    its workflow is like this: 'b c t f -> b c t f lag -> b c t f*lag'
+
+    Example:
+    X = np.arange(24).reshape(2,3,4)
+    print(X)
+    X_lag = match_lag(X,(0,1,2,4),'b t f')
+    print(X_lag)
+    '''
+
+
+
+    #remove spaces at the beginning and end
+    format = format.strip()
+    #analyse format, splited by any number of spaces
+    format = re.split('\s+',format)
+
+    #find the time dimension
+    time_dim = format.index('t')
+
+    #find the feature dimension
+    feature_dim = format.index('f')
+
+    X_lags = []
+
+    for i in range(lag_num):
+        
+        if i==0:
+            X_lag = X
+        else:
+            lag_before = i>0 
+            if lag_before:
+                #generate pad matrix
+                pad_matrix_shape = list(X.shape)
+                pad_matrix_shape[time_dim] = i
+                pad_matrix = np.zeros(pad_matrix_shape)
+                X_lag = np.concatenate((pad_matrix,X),axis=time_dim)
+
+                #remove the last lag_num samples
+                X_lag = np.delete(X_lag, np.s_[-i:], axis=time_dim)
+            else:
+                lag_num = -lag_num
+                #generate pad matrix
+                pad_matrix_shape = list(X.shape)
+                pad_matrix_shape[time_dim] = i
+                pad_matrix = np.zeros(pad_matrix_shape)
+                X_lag = np.concatenate((X,pad_matrix),axis=time_dim)
+
+                #remove the first lag_num samples
+                X_lag = np.delete(X_lag, np.s_[:i], axis=time_dim)
+        X_lags.append(X_lag)
+
+    X_lags = np.concatenate(X_lags,axis=feature_dim)
+
+
+    return X_lags
+
+def align_time(array,t_origin,t_new,format,interpolate=True):
     '''
     array: np array, the array to be aligned
     t_origin: original time points, 1d array, corresponding to the array
     t_new: new time points, 1d array
     format: name of dimensions, like 'b c t f ' or 't f'
+    interpolate: whether to interpolate the array, if False, the new time points will be the nearest time points of the resampled array, and new time points will be included in the return value
 
     Example:
     X = np.arange(24).reshape(2,3,4)
@@ -108,19 +252,25 @@ def align_time(array,t_origin,t_new,format):
         pad_matrix_shape = list(array_resample.shape)
         pad_matrix_shape[time_dim] = num_pad_after
         pad_matrix = np.zeros(pad_matrix_shape)
-        array_pad = np.concatenate((array_resample,pad_matrix),axis=time_dim)
-        t_pad = np.concatenate((t_resample,np.linspace(t_resample[-1],t_new[-1],num_pad_after)),axis=0)
+        if num_pad_before>0:
+            array_pad = np.concatenate((array_pad,pad_matrix),axis=time_dim)
+            t_pad = np.concatenate((t_pad,np.linspace(t_pad[-1],t_new[-1],num_pad_after)),axis=0)
+
+        else:
+            array_pad = np.concatenate((array_resample,pad_matrix),axis=time_dim)
+            t_pad = np.concatenate((t_resample,np.linspace(t_resample[-1],t_new[-1],num_pad_after)),axis=0)
 
     if num_pad_before<=0 and num_pad_after<=0:
         array_pad = array_resample
         t_pad = t_resample
 
-    
-    #interpolate
-    interp_func = interp1d(t_pad, array_pad, axis=time_dim)
-    array_new = interp_func(t_new)
-
-    return array_new
+    if interpolate:
+        #interpolate
+        interp_func = interp1d(t_pad, array_pad, axis=time_dim)
+        array_new = interp_func(t_new)
+        return array_new
+    else:
+        return array_pad,t_pad
 
 
 class rearrange_and_reverse:
@@ -180,7 +330,43 @@ class rearrange_and_reverse:
 
 
 
+def generate_phoneme_features(all_labels, phoneme_label, phoneme_onset, phoneme_offset, time_length,onset_feature=False):
 
+    #make sure all_labels, phoneme_label, phoneme_onset, phoneme_offset are all numpy arrays
+    all_labels = np.array(all_labels)
+    phoneme_label = np.array(phoneme_label)
+    phoneme_onset = np.array(phoneme_onset)
+    phoneme_offset = np.array(phoneme_offset)
+    
+    feature_tensor = np.zeros((time_length,len(all_labels)))
+
+    for phoneme_index in range(len(phoneme_label)):
+        phoneme = phoneme_label[phoneme_index]
+        onset = round(phoneme_onset[phoneme_index]*100)
+        offset = round(phoneme_offset[phoneme_index]*100)
+        if onset<0:
+            onset=0
+        if offset>time_length-1:
+            offset=time_length-1
+        if not onset_feature:
+            feature_tensor[onset:offset,all_labels==phoneme] = 1
+        else:
+            feature_tensor[onset,all_labels==phoneme] = 1
+    return feature_tensor
+
+def generate_gonset_features(phoneme_onsets,time_length):
+    feature_tensor = np.zeros((time_length,1))
+
+    for phoneme_onset in phoneme_onsets:
+        onset = round(phoneme_onset*100)
+        if onset<0:
+            onset=0
+
+        # if onset>time_length-1:
+        #     onset=time_length-1
+
+        feature_tensor[onset,0] = 1
+    return feature_tensor
 
 if __name__ == '__main__':
     #construct a test matrix for lag

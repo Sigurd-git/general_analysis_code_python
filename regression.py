@@ -65,7 +65,7 @@ class Ridge:
                 else:
                     folds = StratifiedKFold(n_splits=folds, shuffle=True, random_state=self.random_state)
 
-            # list or tuple
+            # list or tuple of indices
             elif isinstance(folds,(list,tuple)):
                 if stratify is None:
                     tmp = folds
@@ -172,7 +172,7 @@ class Ridge:
         elif self.scoring == 'r2':
             # if y is a vector, then self.predict(X) will be a matrix but not vector. The origin for loop here is wrong.
             ss_res = np.sum((self.predict(X) - y)**2)
-            ss_tot = np.sum((y - np.mean(y))**2)
+            ss_tot = np.sum((y - np.mean(y,axis=0,keepdims=True))**2)
             r2 = 1 - (ss_res / ss_tot)
             return r2
 
